@@ -1,6 +1,6 @@
 # Coordimap OpenTelemetry Kit for Go
 
-`otelkit-go` provides a small reusable OpenTelemetry bootstrap layer for Coordimap Go microservices. It keeps to standard OpenTelemetry Go packages, supports standard environment-variable configuration, and adds thin helpers for HTTP, gRPC, NATS, and `database/sql` instrumentation.
+`otelkit-go` provides a small reusable OpenTelemetry bootstrap layer for Coordimap Go microservices. It keeps to standard OpenTelemetry Go packages, supports standard environment-variable configuration, and adds thin helpers for HTTP, gRPC, NATS, Redis, and `database/sql` instrumentation.
 
 ## Install
 
@@ -14,6 +14,7 @@ go get github.com/coordimap/otelkit-go
 - `httpotel`: inbound HTTP middleware and outbound HTTP client helpers
 - `grpcotel`: gRPC client and server interceptors
 - `natsotel`: NATS header propagation helpers
+- `redisotel`: thin `go-redis/v9` tracing and metrics helpers
 - `sqlotel`: thin `database/sql` wrappers backed by `github.com/XSAM/otelsql`
 
 ## Supported environment variables
@@ -111,6 +112,7 @@ Runnable examples live under `examples/`:
 - `examples/grpc-service`
 - `examples/http-client`
 - `examples/nats-propagation`
+- `examples/redis-client`
 
 Example OTLP HTTP collector configuration:
 
@@ -154,6 +156,21 @@ msg.Header = natsotel.Inject(ctx, msg.Header)
 
 consumerCtx := natsotel.Extract(context.Background(), msg.Header)
 ```
+
+### Redis client
+
+```go
+client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+if err := redisotel.InstrumentTracingReducedNoise(client); err != nil {
+	return err
+}
+
+if err := client.Set(ctx, "coordimap", "otelkit", 0).Err(); err != nil {
+	return err
+}
+```
+
+`redisotel.InstrumentTracingReducedNoise(...)` disables raw command statements, caller metadata, and dial spans, and filters low-value commands like `PING` and `CLIENT`.
 
 ### `database/sql` connections
 
@@ -234,7 +251,8 @@ func main() {
 3. Replace existing HTTP transport wrapping with `httpotel.NewClient(nil)` or `httpotel.NewTransport(...)`.
 4. Replace gRPC interceptor wiring with `grpcotel.UnaryServerInterceptor()` and `grpcotel.UnaryClientInterceptor()`.
 5. Inject or extract NATS headers with `natsotel.Inject` and `natsotel.Extract` around publish and consume code.
-6. Swap `sql.Open(...)` calls to `sqlotel.Open(...)` anywhere services use `database/sql` directly.
+6. Instrument Redis clients with `redisotel.InstrumentTracing(...)` anywhere services use `go-redis/v9`.
+7. Swap `sql.Open(...)` calls to `sqlotel.Open(...)` anywhere services use `database/sql` directly.
 
 ## Tradeoffs and follow-up improvements
 
