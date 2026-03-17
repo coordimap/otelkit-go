@@ -26,6 +26,7 @@ go get github.com/coordimap/otelkit-go
 - `OTEL_TRACES_EXPORTER`
 - `OTEL_METRICS_EXPORTER`
 - `OTEL_LOGS_EXPORTER`
+- `OTELKIT_SQLOTEL_SPAN_PRESET`
 - `OTEL_PROPAGATORS`
 - `OTEL_TRACES_SAMPLER`
 - `OTEL_TRACES_SAMPLER_ARG`
@@ -39,6 +40,11 @@ Supported OTLP protocols:
 
 - `grpc`
 - `http/protobuf`
+
+Supported SQL span presets:
+
+- `reduced`
+- `none`
 
 Supported propagators:
 
@@ -158,12 +164,23 @@ db, err := sqlotel.Open(
 	sqlotel.WithDBSystem("postgresql"),
 	sqlotel.WithDBName("asset_repository"),
 	sqlotel.WithServerAddress("postgres:5432"),
+	sqlotel.WithReducedSpanNoise(),
 )
 if err != nil {
 	return err
 }
 defer db.Close()
 ```
+
+`sqlotel.Open(...)`, `sqlotel.OpenDB(...)`, and `sqlotel.Register(...)` apply `sqlotel.WithReducedSpanNoise()` by default. You can still tune SQL span volume further with `sqlotel.WithSpanOptions(...)` or `sqlotel.WithSpanFilter(...)`.
+
+To override the default globally, set:
+
+```bash
+export OTELKIT_SQLOTEL_SPAN_PRESET=none
+```
+
+Use `reduced` to keep the default behavior explicit, or `none` to disable the built-in noise reduction. Explicit options passed to `sqlotel.Open(...)`, `sqlotel.OpenDB(...)`, or `sqlotel.Register(...)` can still override the defaults.
 
 ## Injecting Coordimap-specific behavior
 

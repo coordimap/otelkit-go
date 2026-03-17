@@ -6,9 +6,11 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"strings"
 	"sync/atomic"
 	"testing"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -143,9 +145,81 @@ func TestHelperOptions(t *testing.T) {
 		WithServerAddress("localhost:5432"),
 		WithTracerProvider(sdktrace.NewTracerProvider()),
 		WithMeterProvider(noop.NewMeterProvider()),
+		WithSpanNameFormatter(func(_ context.Context, method Method, _ string) string { return string(method) }),
+		WithSpanOptions(SpanOptions{OmitRows: true}),
+		WithSQLCommenter(false),
+		WithAttributesGetter(func(context.Context, Method, string, []driver.NamedValue) []attribute.KeyValue { return nil }),
+		WithInstrumentAttributesGetter(func(context.Context, Method, string, []driver.NamedValue) []attribute.KeyValue { return nil }),
+		WithInstrumentErrorAttributesGetter(func(error) []attribute.KeyValue { return nil }),
+		WithDisableSkipErrMeasurement(true),
+		WithReducedSpanNoise(),
+		WithSpanFilter(func(context.Context, Method, string, []driver.NamedValue) bool { return true }),
+		WithQuerySpanFilter(func(_ context.Context, _ Method, query string) bool { return !strings.Contains(query, "healthcheck") }),
 	)
 	if err != nil {
 		t.Fatalf("Open() with helper options error = %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		t.Fatalf("db.Ping() error = %v", err)
+	}
+}
+
+func TestDefaultOptionsFromEnv(t *testing.T) {
+	t.Parallel()
+
+	if got := defaultOptionsFromEnv(func(string) (string, bool) { return "", false }); len(got) != 1 {
+		t.Fatalf("defaultOptionsFromEnv() len = %d, want 1", len(got))
+	}
+	if got := defaultOptionsFromEnv(func(key string) (string, bool) {
+		if key == envSpanPreset {
+			return "reduced", true
+		}
+		return "", false
+	}); len(got) != 1 {
+		t.Fatalf("defaultOptionsFromEnv() len = %d, want 1", len(got))
+	}
+	if got := defaultOptionsFromEnv(func(key string) (string, bool) {
+		if key == envSpanPreset {
+			return "none", true
+		}
+		return "", false
+	}); got != nil {
+		t.Fatalf("defaultOptionsFromEnv() = %#v, want nil", got)
+	}
+}
+
+func TestRegisterUsesReducedSpanNoiseByDefault(t *testing.T) {
+	t.Parallel()
+
+	got := withRegisterOptions(nil)
+	if len(got) == 0 {
+		t.Fatal("withRegisterOptions() returned no defaults")
+	}
+}
+
+func TestDefaultOptionsUnknownPresetFallsBackToReduced(t *testing.T) {
+	t.Parallel()
+
+	got := defaultOptionsFromEnv(func(key string) (string, bool) {
+		if key == envSpanPreset {
+			return "unexpected", true
+		}
+		return "", false
+	})
+	if len(got) != 1 {
+		t.Fatalf("defaultOptionsFromEnv() len = %d, want 1", len(got))
+	}
+}
+
+func TestOpenUsesEnvPreset(t *testing.T) {
+	t.Setenv(envSpanPreset, "reduced")
+
+	base := registerTestDriver(t)
+	db, err := Open(base, "test-dsn")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
 	}
 	defer db.Close()
 
