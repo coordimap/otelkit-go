@@ -1,6 +1,6 @@
 # Coordimap OpenTelemetry Kit for Go
 
-`otelkit-go` provides a small reusable OpenTelemetry bootstrap layer for Coordimap Go microservices. It keeps to standard OpenTelemetry Go packages, supports standard environment-variable configuration, and adds thin helpers for HTTP, gRPC, and NATS propagation.
+`otelkit-go` provides a small reusable OpenTelemetry bootstrap layer for Coordimap Go microservices. It keeps to standard OpenTelemetry Go packages, supports standard environment-variable configuration, and adds thin helpers for HTTP, gRPC, NATS, and `database/sql` instrumentation.
 
 ## Install
 
@@ -14,6 +14,7 @@ go get github.com/coordimap/otelkit-go
 - `httpotel`: inbound HTTP middleware and outbound HTTP client helpers
 - `grpcotel`: gRPC client and server interceptors
 - `natsotel`: NATS header propagation helpers
+- `sqlotel`: thin `database/sql` wrappers backed by `github.com/XSAM/otelsql`
 
 ## Supported environment variables
 
@@ -148,6 +149,22 @@ msg.Header = natsotel.Inject(ctx, msg.Header)
 consumerCtx := natsotel.Extract(context.Background(), msg.Header)
 ```
 
+### `database/sql` connections
+
+```go
+db, err := sqlotel.Open(
+	"postgres",
+	dsn,
+	sqlotel.WithDBSystem("postgresql"),
+	sqlotel.WithDBName("asset_repository"),
+	sqlotel.WithServerAddress("postgres:5432"),
+)
+if err != nil {
+	return err
+}
+defer db.Close()
+```
+
 ## Injecting Coordimap-specific behavior
 
 The package does not hard-code Coordimap resource fields, exporters, or interceptors. Any Coordimap-specific behavior stays optional and injectable:
@@ -169,9 +186,10 @@ You can also skip global installation with `otelkit.WithoutGlobals()` and wire p
 1. Remove service-local tracer provider bootstrap code and OTLP exporter setup.
 2. Add `otelkit.New(ctx)` during process startup.
 3. Replace direct `otelhttp` or `otelgrpc` imports with `httpotel` and `grpcotel` helpers where convenient.
-4. Use `tel.Tracer("service-name")` and `tel.Meter("service-name")` instead of building providers manually.
-5. Defer `tel.Shutdown(context.Background())` in `main()`.
-6. Move collector configuration to env vars.
+4. Replace `sql.Open(...)` with `sqlotel.Open(...)` for instrumented `database/sql` connections.
+5. Use `tel.Tracer("service-name")` and `tel.Meter("service-name")` instead of building providers manually.
+6. Defer `tel.Shutdown(context.Background())` in `main()`.
+7. Move collector configuration to env vars.
 
 Minimal startup snippet:
 
@@ -199,6 +217,7 @@ func main() {
 3. Replace existing HTTP transport wrapping with `httpotel.NewClient(nil)` or `httpotel.NewTransport(...)`.
 4. Replace gRPC interceptor wiring with `grpcotel.UnaryServerInterceptor()` and `grpcotel.UnaryClientInterceptor()`.
 5. Inject or extract NATS headers with `natsotel.Inject` and `natsotel.Extract` around publish and consume code.
+6. Swap `sql.Open(...)` calls to `sqlotel.Open(...)` anywhere services use `database/sql` directly.
 
 ## Tradeoffs and follow-up improvements
 

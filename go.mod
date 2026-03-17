@@ -3,6 +3,7 @@ module github.com/coordimap/otelkit-go
 go 1.23.0
 
 require (
+	github.com/XSAM/otelsql v0.40.0
 	github.com/nats-io/nats.go v1.39.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
